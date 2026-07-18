@@ -1,0 +1,16 @@
+{
+  "name": "로또맨 — 로또는 통계다",
+  "short_name": "로또맨",
+  "description": "로또는 통계다, 로또맨. 로또 6/45 전 회차 통계 놀이터 — 번호 생성, 백테스트, 내 기록 자동 채점.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F1218",
+  "theme_color": "#0F1218",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
