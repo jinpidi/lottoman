@@ -475,24 +475,37 @@ function renderHeader(){
   $("#sumRangeLabel").textContent = `${SUM_LO}~${SUM_HI}`;
   renderEV();
 }
-/* 이월 EV 배지: 세전·분할 미반영 추정치 — 이월금만이 '내 돈이 아닌 돈'이 상금 풀에 얹히는 순간 */
+/* 이월 EV 배지 + 1등 예상 팟: 세전·추정치 — 이월금만이 '내 돈이 아닌 돈'이 풀에 얹히는 순간 */
+function firstPoolOf(S){ // 판매액 S원 회차의 1등 배정액 추정 (4·5등 고정액 차감 후 75%)
+  const games = S/1000;
+  return (S*0.5 - (games/45*5000 + games*0.000969*50000)) * 0.75;
+}
+function afterTax(p){ // 복권 세금: 5만 이하 비과세, ~3억 22%, 3억 초과분 33%
+  if(p<=5e4) return p;
+  return p - (Math.min(p,3e8)-5e4)*0.22 - Math.max(0,p-3e8)*0.33;
+}
+const eok = x => x>=1e9 ? (x/1e8).toFixed(0)+"억" : (x/1e8).toFixed(1)+"억";
 function renderEV(){
   const el = $("#evLine"); if(!el) return;
   const sales = d => (d[9]||0)*1e8;
   let carry = 0, k = N-1;
   while(k>=0 && (DRAWS[k][8]||0)===0){           // 뒤에서부터 연속 1등 무배출 회차
     const S = sales(DRAWS[k]); if(!S) break;
-    const games = S/1000;
-    const rest = S*0.5 - (games/45*5000 + games*0.000969*50000); // 4·5등 고정액 차감
-    carry += rest*0.75; k--;
+    carry += firstPoolOf(S); k--;
   }
   const rec = DRAWS.slice(-8).map(sales).filter(x=>x>0);
   if(!rec.length){ el.textContent=""; return; }
   const S = rec.reduce((a,b)=>a+b,0)/rec.length;
+  const pool = firstPoolOf(S) + carry;
+  const ws = DRAWS.slice(-24).map(d=>d[8]||0).filter(w=>w>0);       // 최근 24회 평균 1등 인원
+  const avgW = ws.length ? Math.round(ws.reduce((a,b)=>a+b,0)/ws.length) : 1;
+  const per = pool/avgW, net = afterTax(per);
   const ev = Math.round(500 + carry/(S/1000));
-  el.innerHTML = carry>0
-    ? `<span class="hot">🔥 1등 이월 약 ${Math.round(carry/1e8)}억</span> — 추정 EV <b>${ev}원</b>/1,000원 (평소 500원) · 굳이 산다면 이런 주!`
-    : `이월 없음 · 추정 EV <b>약 500원</b>/1,000원 — 절반은 복권기금이 되는 주야`;
+  el.innerHTML =
+    `💰 이번 주 1등 팟 추정 <b>${eok(pool)}</b> · 최근 평균 <b>${avgW}명</b> 분할 → 1인당 <b>${eok(per)}</b> (세후 <b>${eok(net)}</b>)<br>`
+    + (carry>0
+      ? `<span class="hot">🔥 1등 이월 약 ${eok(carry)}</span> — 추정 EV <b>${ev}원</b>/1,000원 (평소 500원) · 굳이 산다면 이런 주!`
+      : `이월 없음 · 추정 EV <b>약 500원</b>/1,000원 — 절반은 복권기금이 되는 주야`);
 }
 renderHeader();
 
