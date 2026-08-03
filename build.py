@@ -28,7 +28,8 @@ def main():
     rows = []
     for r in data:
         first = r["divisions"][0] if r["divisions"] else {}
-        rows.append(r["numbers"] + [r["bonus_no"], first.get("prize", 0), first.get("winners", 0)])
+        sales_eok = round((r.get("total_sales_amount") or 0) / 1e8)  # 판매액(억원) — EV 배지용
+        rows.append(r["numbers"] + [r["bonus_no"], first.get("prize", 0), first.get("winners", 0), sales_eok])
     # 무결성: 회차 연속성 + 번호 범위
     assert all(len(set(row[:6])) == 6 and all(1 <= n <= 45 for n in row[:6]) for row in rows)
 

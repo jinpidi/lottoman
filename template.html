@@ -49,6 +49,9 @@ h1{font-size:26px; margin:2px 0 0; font-weight:800; letter-spacing:-.02em;}
 .next-draw b{font-size:15px}
 .next-draw .d{color:var(--accent); font-weight:700; font-size:18px; font-family:var(--font-num); letter-spacing:.01em;}
 .next-draw .d.soon{color:var(--warn);}
+.ev-line{margin:7px 2px 0; font-size:11.5px; color:var(--muted); line-height:1.5;}
+.ev-line b{color:var(--ink2); font-variant-numeric:tabular-nums;}
+.ev-line .hot{color:var(--warn); font-weight:800;}
 
 nav.tabs{display:flex; gap:4px; background:var(--surface); border:1px solid var(--line);
   border-radius:12px; padding:4px; margin:14px 0 18px; position:sticky; top:8px; z-index:5;}
@@ -215,6 +218,7 @@ button:focus-visible, label:focus-visible, input:focus-visible{outline:2px solid
     <span><b id="nextRound"></b> <span style="color:var(--ink2);font-size:13px" id="nextDate"></span></span>
     <span class="d" id="dday"></span>
   </div>
+  <p class="ev-line" id="evLine"></p>
   <div class="bubble" style="margin-top:12px"><span class="who"></span>
     <span class="say" id="heroSay">안녕, 나는 <b>로또맨</b>! 먼저 솔직 고백 — <b>로또 번호는 아무도 못 맞혀.</b> 대신 통계로 재밌게 노는 법을 알려줄게 🍀</span>
   </div>
@@ -469,6 +473,26 @@ function renderHeader(){
   dd.classList.toggle("soon", days<=1);
   const lf = $("#lastRoundFoot"); if(lf) lf.textContent = N;
   $("#sumRangeLabel").textContent = `${SUM_LO}~${SUM_HI}`;
+  renderEV();
+}
+/* 이월 EV 배지: 세전·분할 미반영 추정치 — 이월금만이 '내 돈이 아닌 돈'이 상금 풀에 얹히는 순간 */
+function renderEV(){
+  const el = $("#evLine"); if(!el) return;
+  const sales = d => (d[9]||0)*1e8;
+  let carry = 0, k = N-1;
+  while(k>=0 && (DRAWS[k][8]||0)===0){           // 뒤에서부터 연속 1등 무배출 회차
+    const S = sales(DRAWS[k]); if(!S) break;
+    const games = S/1000;
+    const rest = S*0.5 - (games/45*5000 + games*0.000969*50000); // 4·5등 고정액 차감
+    carry += rest*0.75; k--;
+  }
+  const rec = DRAWS.slice(-8).map(sales).filter(x=>x>0);
+  if(!rec.length){ el.textContent=""; return; }
+  const S = rec.reduce((a,b)=>a+b,0)/rec.length;
+  const ev = Math.round(500 + carry/(S/1000));
+  el.innerHTML = carry>0
+    ? `<span class="hot">🔥 1등 이월 약 ${Math.round(carry/1e8)}억</span> — 추정 EV <b>${ev}원</b>/1,000원 (평소 500원) · 굳이 산다면 이런 주!`
+    : `이월 없음 · 추정 EV <b>약 500원</b>/1,000원 — 절반은 복권기금이 되는 주야`;
 }
 renderHeader();
 
@@ -699,7 +723,7 @@ function appendRows(rows){
       for(let r=N+1; r<=latest.draw_no; r++){
         const j = r===latest.draw_no ? latest : await (await fetch(base+r+".json")).json();
         const first = (j.divisions && j.divisions[0]) || {};
-        rows.push(j.numbers.concat([j.bonus_no, first.prize||0, first.winners||0]));
+        rows.push(j.numbers.concat([j.bonus_no, first.prize||0, first.winners||0, Math.round((j.total_sales_amount||0)/1e8)]));
       }
       appendRows(rows);
       try{ localStorage.setItem(EXTRA_KEY, JSON.stringify({from:EMBED_N+1, rows:DRAWS.slice(EMBED_N)})); }catch(e){}
