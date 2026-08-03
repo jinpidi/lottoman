@@ -141,6 +141,16 @@ section[hidden]{display:none}
 .tile .v{font-size:20px; font-weight:700; margin-top:2px; font-family:var(--font-num);}
 .tile .v small{font-size:12px; color:var(--ink2); font-weight:600;}
 
+/* 현실 점검 — 지출/회수 */
+.budget-wrap{height:9px; background:var(--line); border-radius:999px; overflow:hidden; margin:6px 0 16px;}
+.budget-fill{height:100%; width:0; background:var(--accent); border-radius:999px; transition:width .45s ease;}
+.budget-fill.over{background:var(--warn);}
+.ledger{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; text-align:center; margin-bottom:6px;}
+.ledger .lk{font-size:11px; color:var(--muted); font-weight:700;}
+.ledger .lv{font-size:18px; font-weight:700; font-family:var(--font-num); margin-top:3px; letter-spacing:-.01em;}
+.ledger .lv.pos{color:var(--good);} .ledger .lv.neg{color:var(--warn);}
+.ledger .lv small{font-size:11px; color:var(--muted); font-weight:600;}
+
 /* chart */
 .chart-wrap{position:relative; margin-top:6px;}
 .chart{display:flex; align-items:flex-end; gap:2px; height:120px; border-bottom:1px solid var(--line); padding-bottom:0;}
@@ -240,6 +250,10 @@ button:focus-visible, label:focus-visible, input:focus-visible{outline:2px solid
         <label><input type="checkbox" checked data-f="dup"> 과거 1등 조합 그대로는 제외</label>
       </div>
     </details>
+    <div class="seg" id="countSeg" style="margin-bottom:10px">
+      <button aria-pressed="true" data-c="5">5게임 · 5천원</button>
+      <button aria-pressed="false" data-c="10">10게임 · 1만원</button>
+    </div>
     <button class="gen-btn" id="genBtn">5게임 생성</button>
     <div class="games" id="games"></div>
   </div>
@@ -317,6 +331,13 @@ button:focus-visible, label:focus-visible, input:focus-visible{outline:2px solid
 <section id="tab-hall" hidden>
   <div class="bubble"><span class="who"></span><span class="say" id="hallSay"></span></div>
   <div class="tiles" id="hallTiles" style="grid-template-columns:1fr 1fr 1fr"></div>
+  <div class="card" id="ledgerCard">
+    <h2>💸 현실 점검 — 지출 vs 회수</h2>
+    <p class="sub" id="budgetLine" style="margin-bottom:2px"></p>
+    <div class="budget-wrap"><div class="budget-fill" id="budgetFill"></div></div>
+    <div class="ledger" id="ledger"></div>
+    <div class="note" id="ledgerSay" style="margin-top:12px"></div>
+  </div>
   <div class="card">
     <h2>내 명예의 전당</h2>
     <p class="sub">저장한 번호는 추첨이 끝나면 로또맨이 자동으로 채점해줘.</p>
@@ -470,11 +491,17 @@ segInit("#stratSeg", b=>{ strat = b.dataset.s; $("#btBtn").textContent = `백테
 function readFilters(){
   const F={}; document.querySelectorAll("#filters input").forEach(i=> F[i.dataset.f]=i.checked); return F;
 }
+let genCount = 5;
+segInit("#countSeg", b=>{ genCount = +b.dataset.c; $("#genBtn").textContent = `${genCount}게임 생성`; });
 $("#genBtn").onclick = ()=>{
   const F = readFilters(), box = $("#games"); box.innerHTML="";
-  const labels="ABCDE";
-  for(let i=0;i<5;i++){
-    const g = generate(strat, F, N);
+  const labels="ABCDEFGHIJ";
+  const picks = [];
+  for(let i=0;i<genCount;i++){
+    let g, tries=0;
+    do { g = generate(strat, F, N); tries++; }        // 10게임끼리 4개 이상 겹침 방지(분산)
+    while(tries<60 && picks.some(h=>g.filter(n=>h.includes(n)).length>=4));
+    picks.push(g);
     const sum = g.reduce((a,b)=>a+b,0), odd = g.filter(n=>n%2).length, low = g.filter(n=>n<=22).length;
     let best=0, bestR=0;
     for(let r=0;r<N;r++){ let m=0; for(const n of g) if(DRAWS[r].indexOf(n)>-1 && DRAWS[r].slice(0,6).includes(n)) m++;
@@ -509,6 +536,18 @@ function gradeOf(en){ // 추첨 전이면 null
   const rank = m===6?"1등 🏆":bonus?"2등 🎉":m===5?"3등 🎉":m===4?"4등":m===3?"5등":null;
   return {m, rank};
 }
+const WEEK_CAP = 10; // 주 1만원(10게임) 상한
+function wonAmount(en){
+  const g = gradeOf(en); if(!g) return 0;
+  const d = DRAWS[en.r-1], bonus = g.m===5 && en.n.includes(d[6]);
+  if(g.m===6) return d[7]||2000000000;   // 실제 1등(없으면 20억 근사)
+  if(g.m===5 && bonus) return 60000000;  // 2등 근사
+  if(g.m===5) return 1500000;            // 3등 근사
+  if(g.m===4) return 50000;              // 4등 고정
+  if(g.m===3) return 5000;               // 5등 고정
+  return 0;
+}
+const wonf = w => w>=1e8 ? (w/1e8).toFixed(1).replace(/\.0$/,"")+"억" : w>=1e4 ? Math.round(w/1e4)+"만" : w.toLocaleString();
 function renderHall(){
   const a = loadSaves();
   const graded = a.map(en=>({en, g:gradeOf(en)}));
@@ -519,6 +558,31 @@ function renderHall(){
     ["채점 완료", done.length+"<small>개</small>"],
     ["최고 기록", bestM===null?"—":bestM+"<small>개 일치</small>"],
   ].map(([k,v])=>`<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+
+  /* 주간 예산(이번 회차) */
+  const thisWeek = a.filter(en=>en.r===N+1).length;
+  const over = thisWeek>WEEK_CAP;
+  $("#budgetLine").innerHTML = `이번 주(제${N+1}회) <b style="color:var(--ink)">${thisWeek}/${WEEK_CAP}게임</b> · ${(thisWeek*1000).toLocaleString()}원`
+    + (thisWeek>=WEEK_CAP ? (over? ` <b style="color:var(--warn)">— 상한 초과!</b>` : ` <b style="color:var(--good)">— 딱 1만원, 완벽! 👍</b>`) : "");
+  const fill = $("#budgetFill");
+  fill.style.width = Math.min(100, thisWeek/WEEK_CAP*100)+"%";
+  fill.classList.toggle("over", over);
+
+  /* 정산 원장(채점 완료분): 지출 vs 회수 */
+  const spent = done.length*1000;
+  const ret = done.reduce((s,x)=>s+wonAmount(x.en),0);
+  const net = ret-spent;
+  $("#ledger").innerHTML = [
+    ["총 지출", spent.toLocaleString()+"<small>원</small>", ""],
+    ["총 회수", (spent? wonf(ret)+"<small>원</small>" : "—"), ""],
+    ["손익", (spent? (net>=0?"+":"−")+wonf(Math.abs(net))+"<small>원</small>" : "—"), spent?(net>=0?"pos":"neg"):""],
+  ].map(([k,v,c])=>`<div><div class="lk">${k}</div><div class="lv ${c}">${v}</div></div>`).join("");
+  const rate = spent? Math.round(ret/spent*100) : null;
+  $("#ledgerSay").innerHTML = !spent
+    ? "추첨이 지나면 여기에 <b>네가 실제로 쓴 돈과 돌려받은 돈</b>을 정직하게 보여줄게. 로또맨은 이 숫자를 숨기지 않아."
+    : net<0
+      ? `지금까지 <b>${wonf(-net)}원 손해</b> (회수율 ${rate}%). 네 탓이 아니야 — 로또는 원래 낸 돈의 <b>약 47%만</b> 돌아오게 설계된 게임이거든. 그래서 <b>1만원 상한</b>이 최고의 전략이야.`
+      : `오, 지금은 <b style="color:var(--good)">+${wonf(net)}원</b> (회수율 ${rate}%)! 운이 좋았네. 근데 계속 사면 평균(47% 회수)으로 수렴해 — 딴 김에 멈추는 것도 멋진 선택이야 😉`;
   $("#hallSay").innerHTML = a.length===0
     ? "아직 저장한 번호가 없네! <b>생성</b> 탭에서 ⭐를 눌러 여기 모아두면, 추첨 후에 내가 자동으로 채점해줄게."
     : `지금 <b>${a.length}게임</b>을 지켜보는 중이야. 토요일 추첨 끝나면 바로 채점해줄게!`;
